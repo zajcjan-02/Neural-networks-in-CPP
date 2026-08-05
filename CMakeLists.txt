@@ -11,4 +11,5 @@ add_executable(NeuralNetworksC main.cpp
         src/NeuralNetwork.cpp
         src/NeuralNetwork.h
         src/STATUS.h
+        src/Adam.h
 )

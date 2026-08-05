@@ -18,6 +18,13 @@ DenseLayer::DenseLayer(size_t n_in, size_t n_out): in(n_in), out(n_out) {
 	activation_values.resize(n_out);
 	xavier_weight_initialization();
 
+	// Adam
+	m_weights.assign(weights.size(), 0.0f);
+	m_bias.assign(bias.size(), 0.0f);
+	v_weights.assign(weights.size(), 0.0f);
+	v_bias.assign(bias.size(), 0.0f);
+
+
 }
 
 
@@ -36,6 +43,8 @@ float DenseLayer::activation(float value) {
 			return relu_(value);
 	}
 }
+
+
 
 
 bool DenseLayer::forward(const std::vector<float>& previous_activations) {
@@ -82,7 +91,6 @@ bool DenseLayer::forward(const std::vector<float>& previous_activations) {
 
 	return true;
 }
-
 
 void DenseLayer::xavier_weight_initialization() {
 	float limit = std::sqrt(6.0f / static_cast<float>(in + out));

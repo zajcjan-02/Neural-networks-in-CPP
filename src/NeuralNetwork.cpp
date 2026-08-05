@@ -25,7 +25,7 @@ STATUS NeuralNetwork::compile() {
 		return STATUS::VALUE_OUT_OF_RANGE_ERROR;
 	}
 
-	if (layers.size() < 1) {
+	if (layers.empty()) {
 		std::cerr << "NeuralNetwork::compile(): layers is empty" << std::endl;
 		return STATUS::MISCONFIGURATION;
 	}
@@ -33,6 +33,7 @@ STATUS NeuralNetwork::compile() {
 	for (int i = 1; i<layers.size(); i++) {
 		layers[i].previous = &layers[i-1];
 	}
+
 	is_compiled = true;
 	return STATUS::OK;
 }
@@ -66,7 +67,7 @@ STATUS NeuralNetwork::forward_propagation(const std::vector<float>& input, std::
 	return STATUS::OK;
 }
 
-float NeuralNetwork::Loss_(float x, float y) {
+float NeuralNetwork::Loss_(float x, float y) const {
 	switch (lossFunction) {
 		case LOSS_FUNCTION::MSE:
 			return mse_(x, y);
@@ -80,6 +81,7 @@ float NeuralNetwork::Loss_(float x, float y) {
 
 	}
 }
+
 
 
 float NeuralNetwork::derivative(float value, const ACTIVATION_FUNCTION& activationFunction) {
@@ -96,7 +98,8 @@ float NeuralNetwork::derivative(float value, const ACTIVATION_FUNCTION& activati
 	}
 }
 
-bool NeuralNetwork::update_weights(DenseLayer& current, const std::vector<float>& X) {
+// Legacy
+bool NeuralNetwork::update_weights(DenseLayer& current, const std::vector<float>& X) const {
 
 	const bool c = current.previous == nullptr;
 
@@ -122,7 +125,6 @@ bool NeuralNetwork::update_weights(DenseLayer& current, const std::vector<float>
 
 
 // TODO different loss functions (only mse and categorical cross entropy right now)
-// TODO Bias update
 STATUS NeuralNetwork::back_propagation(const std::vector<float>& X, const std::vector<float>& y) {
 
 	if (!is_compiled) {
@@ -208,13 +210,85 @@ STATUS NeuralNetwork::train(const std::vector<float>& X, const std::vector<float
 		return STATUS::BACKPROPAGATE_FAILED;
 	}
 
+	if (adam_step() != STATUS::OK) {
+		std::cerr << "Adam step failed" << std::endl;
+		return STATUS::ADAM_STEP_FAILURE;
+	}
+
+
 	return STATUS::OK;
 }
+
+STATUS NeuralNetwork::adam_update(
+	std::vector<float> &params,
+	const std::vector<float> &grads,
+	std::vector<float> &m,
+	std::vector<float> &v) const {
+
+	auto beta1_t = static_cast<float>(std::pow(adam.beta1, adam.t));
+	auto beta2_t = static_cast<float>(std::pow(adam.beta2, adam.t));
+
+	if (m.size() != params.size()) {
+		std::cerr << "Size mismatch: first moment vector m and params vector sizes do not match" << std::endl;
+		return STATUS::SIZE_MISMATCH;
+	}
+	if (v.size() != params.size()) {
+		std::cerr << "Size mismatch: second moment vector v and params vector sizes do not match" << std::endl;
+		return STATUS::SIZE_MISMATCH;
+	}
+
+	for (size_t i = 0; i < params.size(); i++) {
+		float g = grads[i];
+		m[i] = adam.beta1 * m[i] * (1.0f - adam.beta1) * g;
+		v[i] = adam.beta2 * v[i] * (1.0f - adam.beta2) * g * g;
+
+		if (1.0f - beta1_t == 0.f) {
+			std::cerr << "m_hat calculation caused division by zero";
+			return STATUS::DIVISION_BY_ZERO;
+		}
+
+		if (1.0f - beta2_t == 0.f) {
+			std::cerr << "v_hat calculation caused division by zero";
+			return STATUS::DIVISION_BY_ZERO;
+		}
+
+		float m_hat = m[i] / (1.0f - beta1_t);
+		float v_hat = v[i] / (1.0f - beta2_t);
+
+		params[i] = adam.lr * m_hat / (std::sqrt(v_hat) + adam.eps);
+	}
+
+	return STATUS::OK;
+}
+STATUS NeuralNetwork::adam_step() {
+	adam.t++;
+
+	for (DenseLayer &layer : layers) {
+		if (adam_update(
+			layer.weights,
+			layer.grad_weights,
+			layer.m_weights,
+			layer.v_weights
+			) != STATUS::OK) {
+			return STATUS::WEIGHT_UPDATE_FAILURE;
+		};
+		if (adam_update(
+				layer.bias,
+				layer.grad_bias,
+				layer.m_bias,
+				layer.v_bias
+				) != STATUS::OK) {
+			return STATUS::BIAS_UPDATE_FAILURE;
+		};
+	}
+	return STATUS::OK;
+}
+
 
 STATUS NeuralNetwork::fit(const std::vector<std::vector<float>>& X, const std::vector<std::vector<float>>& y, std::vector<std::vector<float>>& outputs) {
 
 	if (X.size() != y.size()) {
-		std::cerr << "Size mismatch output and expected vectors do not match" << std::endl;
+		std::cerr << "Size mismatch: output and expected vectors do not match" << std::endl;
 		return STATUS::SIZE_MISMATCH;
 	}
 
