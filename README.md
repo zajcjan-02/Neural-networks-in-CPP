@@ -6,7 +6,9 @@ This repository is intentionally written manually and contains **no AI-generated
 
 ## Status
 
-This project is in an early experimental stage. It likely contains bugs, incomplete features, incorrect implementations, and possible security or stability issues.
+This project has moved beyond the earliest experimental stage and now includes a more complete core implementation, including forward propagation, backpropagation, multiple loss functions, and optimizer support such as SGD and Adam.
+
+It is still under active development and may contain bugs, incomplete features, or incorrect edge-case behavior. The implementation should be treated as educational and experimental rather than production-ready
 
 Use at your own risk.
 
