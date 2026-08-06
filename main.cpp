@@ -4,12 +4,21 @@
 #include "src/NeuralNetwork.h"
 
 int main() {
-	std::vector<float> input = {
-		0.5f, 0.1f, 0.7f
-	};
+	std::vector<std::vector<float>> input = {
+		{0.5f, 0.1f, 0.7f},
+		{0.5f, 0.1f, 0.7f},
+		{0.5f, 0.1f, 0.7f}
 
-	std::vector<float> expected = { // not yet relevant
-		1.0f
+	};
+	int r = static_cast<int>(input.size());
+	int c = static_cast<int>(input[0].size());
+
+	std::vector<std::vector<float>> outputs(r, std::vector<float>(c, 0));
+
+	std::vector<std::vector<float>> expected = {
+		{1.0f},
+		{1.0f},
+		{1.0f}
 	};
 
 	std::vector<float> weights_0 = {
@@ -44,7 +53,7 @@ int main() {
 
 	ann.compile();
 
-	ann.fit(input, expected);
+	ann.fit(input, expected, outputs);
 
 	return 0;
 }

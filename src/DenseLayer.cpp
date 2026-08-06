@@ -16,25 +16,16 @@ DenseLayer::DenseLayer(size_t n_in, size_t n_out): in(n_in), out(n_out) {
 	grad_bias.resize(n_out);
 	grad_neurons.resize(n_out);
 	activation_values.resize(n_out);
+	xavier_weight_initialization();
 
+	// Adam
+	m_weights.assign(weights.size(), 0.0f);
+	m_bias.assign(bias.size(), 0.0f);
+	v_weights.assign(weights.size(), 0.0f);
+	v_bias.assign(bias.size(), 0.0f);
 
-	// TODO move to appropriate function/place
-	/*switch (activationFunction) {
-		case ACTIVATION_FUNCTION::SIGMOID:
-		case ACTIVATION_FUNCTION::TANH:
-			sig_weight_initialization();
-			break;
-		case ACTIVATION_FUNCTION::RELU:
-		default:
-			relu_weight_initialization();
-			break;
-	}*/
 
 }
-
-
-
-
 
 
 float DenseLayer::activation(float value) {
@@ -45,17 +36,16 @@ float DenseLayer::activation(float value) {
 		case ACTIVATION_FUNCTION::TANH:
 			return tanh_(value);
 		case ACTIVATION_FUNCTION::RELU:
+			return relu_(value);
+		case ACTIVATION_FUNCTION::SOFTMAX:
+			return value;
 		default:
 			return relu_(value);
 	}
 }
 
-static void print_vector(const std::vector<float>& vec) {
-	for (auto& v : vec) {
-		printf("%f ", v);
-	}
-	printf("\n");
-}
+
+
 
 bool DenseLayer::forward(const std::vector<float>& previous_activations) {
 	if (previous_activations.size() != in) {
@@ -84,33 +74,32 @@ bool DenseLayer::forward(const std::vector<float>& previous_activations) {
 			size_t w = neuron * in + input;
 			val += previous_activations[input] * weights[w];
 		}
-
 		activation_values[neuron] = activation(val);
+
+
+	}
+	if (activationFunction == ACTIVATION_FUNCTION::SOFTMAX) {
+		float s = 0;
+		for (int i = 0; i < activation_values.size(); i++) {
+			s += std::exp(activation_values[i]);
+		}
+
+		for (auto& val : activation_values) {
+			val = std::exp(val) / s;
+		}
 	}
 
 	return true;
 }
 
-void DenseLayer::relu_weight_initialization() {
-	const float stddev = std::sqrt(2.0f / static_cast<float>(in));
+void DenseLayer::xavier_weight_initialization() {
+	float limit = std::sqrt(6.0f / static_cast<float>(in + out));
 
-	std::random_device rd;
-	std::mt19937 gen(rd());
-	std::normal_distribution<float> dist(0.0f, stddev);
+	limit = std::min(limit, 1.0f);
 
-	for (float& w : weights) {
-		w = dist(gen);
-	}
-	for (float& b : bias) {
-		b = 0.0f;
-	}
-}
+	static std::random_device rd;
+	static std::mt19937 gen(rd());
 
-void DenseLayer::sig_weight_initialization() {
-	const float limit = std::sqrt(6.0f / static_cast<float>(in + out));
-
-	std::random_device rd;
-	std::mt19937 gen(rd());
 	std::uniform_real_distribution<float> dist(-limit, limit);
 
 	for (float& w : weights) {

@@ -8,11 +8,11 @@
 #include <cstddef>
 #include <vector>
 #include <cmath>
-#include "STATUS.h"
 enum class ACTIVATION_FUNCTION {
 	RELU = 0,
 	SIGMOID = 1,
 	TANH = 2,
+	SOFTMAX = 3,
 };
 
 
@@ -32,18 +32,25 @@ class DenseLayer {
 		std::vector<float> activation_values;
 		bool forward(const std::vector<float>& previous_activations);
 		std::vector<float> delta;
+		std::vector<float> m_weights;
+		std::vector<float> m_bias;
+
+		std::vector<float> v_weights;
+		std::vector<float> v_bias;
+		std::vector<float> output;
+
+
 
 
 	private:
-		void relu_weight_initialization();
-		void sig_weight_initialization();
+		void xavier_weight_initialization();
 		float activation(float value);
-		static float sig_(float value) { return 1 / (1 + exp(-value)); }
-		static float tanh_(float value) { return (exp(value) - exp(-value)) / (exp(value) + exp(-value)); }
+
+		static float sig_(float value) { return 1.f / (1 + std::exp(-value)); }
+		static float tanh_(float value) { return (std::exp(value) - std::exp(-value)) / (std::exp(value) + std::exp(-value)); }
 		static float relu_(float value) { return value < 0 ? 0 : value; }
+		int timestamp=0;
 
-	/*
 
-	 */
 
 };

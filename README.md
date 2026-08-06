@@ -18,3 +18,8 @@ Use at your own risk.
 * Build neural network components from scratch
 * Focus on clean design, performance, and memory-aware code
 * Avoid unnecessary abstractions and framework-like complexity
+
+
+## Notes
+*Developed using Jetbrains CLion 2025.2*
+*Currently with no optimisations*

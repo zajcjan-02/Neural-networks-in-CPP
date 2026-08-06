@@ -25,7 +25,7 @@ STATUS NeuralNetwork::compile() {
 		return STATUS::VALUE_OUT_OF_RANGE_ERROR;
 	}
 
-	if (layers.size() < 1) {
+	if (layers.empty()) {
 		std::cerr << "NeuralNetwork::compile(): layers is empty" << std::endl;
 		return STATUS::MISCONFIGURATION;
 	}
@@ -33,16 +33,11 @@ STATUS NeuralNetwork::compile() {
 	for (int i = 1; i<layers.size(); i++) {
 		layers[i].previous = &layers[i-1];
 	}
+
 	is_compiled = true;
 	return STATUS::OK;
 }
 
-static void print_vector(const std::vector<float>& vec) {
-	for (auto& v : vec) {
-		printf("%f ", v);
-	}
-	printf("\n");
-}
 
 STATUS NeuralNetwork::forward_propagation(const std::vector<float>& input, std::vector<float>& outarr) {
 	if (!is_compiled) {
@@ -63,28 +58,31 @@ STATUS NeuralNetwork::forward_propagation(const std::vector<float>& input, std::
 	// Every next DenseLayer consumes previous layer's output activations
 	for (size_t i = 1; i < layers.size(); i++) {
 		if (!layers[i].forward(layers[i - 1].activation_values)) {
-			return STATUS::BACKPROPAGATE_FAILED; // TODO add correct STATUS value
+			return STATUS::PROPAGATION_FAILED;
 		}
 	}
-
-	std::cout << "Output value: "
-			  << layers.back().activation_values[0]
-			  << std::endl;
 
 	outarr = layers.back().activation_values;
 
 	return STATUS::OK;
 }
 
-float NeuralNetwork::Loss_(float x, float y) {
+float NeuralNetwork::Loss_(float x, float y) const {
 	switch (lossFunction) {
 		case LOSS_FUNCTION::MSE:
 			return mse_(x, y);
+
+		case LOSS_FUNCTION::CROSS_ENTROPY:
+			return y == 0.0f ? 0.0f : -y * std::log(x);
+
 		case LOSS_FUNCTION::RMSE:
 		default:
 			return x-y;
+
 	}
 }
+
+
 
 float NeuralNetwork::derivative(float value, const ACTIVATION_FUNCTION& activationFunction) {
 	switch (activationFunction) {
@@ -100,7 +98,8 @@ float NeuralNetwork::derivative(float value, const ACTIVATION_FUNCTION& activati
 	}
 }
 
-bool NeuralNetwork::update_weights(DenseLayer& current, const std::vector<float>& X) {
+// Legacy
+bool NeuralNetwork::update_weights(DenseLayer& current, const std::vector<float>& X) const {
 
 	const bool c = current.previous == nullptr;
 
@@ -117,10 +116,6 @@ bool NeuralNetwork::update_weights(DenseLayer& current, const std::vector<float>
 				return false;
 			}
 			current.weights[widx] += delta;
-
-
-			printf("\tWeight(%d, %d) += %f \n", g, n,delta);
-
 		}
 	}
 
@@ -129,8 +124,7 @@ bool NeuralNetwork::update_weights(DenseLayer& current, const std::vector<float>
 }
 
 
-// TODO different loss functions (only mse right now)
-// TODO Bias update
+// TODO different loss functions (only mse and categorical cross entropy right now)
 STATUS NeuralNetwork::back_propagation(const std::vector<float>& X, const std::vector<float>& y) {
 
 	if (!is_compiled) {
@@ -146,21 +140,17 @@ STATUS NeuralNetwork::back_propagation(const std::vector<float>& X, const std::v
 		// if output layer
 		if (lidx == static_cast<int>(layers.size()-1)) {
 			int cc = static_cast<int>(layers[lidx].activation_values.size()); // current (neuron) count
-			printf("Current neuron count: %d \n", cc);
 			for (int neuron = 0; neuron < cc; neuron++) {
-				// assuming sig
+				float grad;
 				float out = layers[lidx].activation_values[neuron];
-				float err = mse_derivative(out, y[neuron]);
-				float der = derivative(out, layers[lidx].activationFunction);
-				float grad = err * der;
+				if (lossFunction == LOSS_FUNCTION::CROSS_ENTROPY) {
+					grad = out - y[neuron];
+				}else {
+					float err = mse_derivative(out, y[neuron]);
+					float der = derivative(out, layers[lidx].activationFunction);
+					grad = err * der;
+				}
 				layers[lidx].grad_neurons[neuron] = grad;
-				printf("Grad(%d, %d) = %f\n", lidx + 1, neuron+ 1, grad);
-
-				// if (!update_weights(layers[lidx], layers[lidx].previous, neuron, grad)){
-				// 	std::cerr << "Update weights failed" << std::endl;
-				// 	return STATUS::WEIGHT_UPDATE_FAILURE;
-				// }
-
 			}
 		}
 		else { // hidden layers
@@ -171,8 +161,6 @@ STATUS NeuralNetwork::back_propagation(const std::vector<float>& X, const std::v
 				float sum = 0.0f;
 
 				for (size_t next = 0; next < nc; next++) {
-					// weight from current neuron -> next neuron
-					// stored inside next layer as incoming weight
 					size_t widx = next * cc + neuron;
 
 					sum += layers[lidx + 1].grad_neurons[next]
@@ -185,18 +173,13 @@ STATUS NeuralNetwork::back_propagation(const std::vector<float>& X, const std::v
 				);
 
 				float grad = sum * a_der;
-
 				layers[lidx].grad_neurons[neuron] = grad;
-				printf("Grad(%d, %zu) = %f \n", lidx + 1, neuron + 1, grad);
-
-
 			}
 		}
 
 	}
 
 	for (int lidx = static_cast<int>(layers.size() -1); lidx >=0; lidx--) {
-		std::cout << "Layer " << lidx << std::endl;
 		if (!update_weights(layers[lidx], X)) {
 			std::cerr << "Update weights failed" << std::endl;
 			return STATUS::WEIGHT_UPDATE_FAILURE;
@@ -209,11 +192,13 @@ STATUS NeuralNetwork::back_propagation(const std::vector<float>& X, const std::v
 }
 
 
-STATUS NeuralNetwork::fit(const std::vector<float>& X, const std::vector<float>& y) {
+STATUS NeuralNetwork::train(const std::vector<float>& X, const std::vector<float>& y, std::vector<float>& out) {
 	std::vector<float> output;
 	if (forward_propagation(X, output) != STATUS::OK) {
 		return STATUS::PROPAGATION_FAILED;
 	}
+
+	out = layers.back().activation_values;
 
 	if (y.size() != output.size()) {
 		std::cerr << "Size mismatch output and expected vectors do not match" << std::endl;
@@ -223,7 +208,106 @@ STATUS NeuralNetwork::fit(const std::vector<float>& X, const std::vector<float>&
 	if (back_propagation(X, y) != STATUS::OK) {
 		std::cerr << "Backpropagation failed" << std::endl;
 		return STATUS::BACKPROPAGATE_FAILED;
-	};
+	}
+
+	if (adam_step() != STATUS::OK) {
+		std::cerr << "Adam step failed" << std::endl;
+		return STATUS::ADAM_STEP_FAILURE;
+	}
+
+
+	return STATUS::OK;
+}
+
+STATUS NeuralNetwork::adam_update(
+	std::vector<float> &params,
+	const std::vector<float> &grads,
+	std::vector<float> &m,
+	std::vector<float> &v) const {
+
+	auto beta1_t = static_cast<float>(std::pow(adam.beta1, adam.t));
+	auto beta2_t = static_cast<float>(std::pow(adam.beta2, adam.t));
+
+	if (m.size() != params.size()) {
+		std::cerr << "Size mismatch: first moment vector m and params vector sizes do not match" << std::endl;
+		return STATUS::SIZE_MISMATCH;
+	}
+	if (v.size() != params.size()) {
+		std::cerr << "Size mismatch: second moment vector v and params vector sizes do not match" << std::endl;
+		return STATUS::SIZE_MISMATCH;
+	}
+
+	for (size_t i = 0; i < params.size(); i++) {
+		float g = grads[i];
+		m[i] = adam.beta1 * m[i] * (1.0f - adam.beta1) * g;
+		v[i] = adam.beta2 * v[i] * (1.0f - adam.beta2) * g * g;
+
+		if (1.0f - beta1_t == 0.f) {
+			std::cerr << "m_hat calculation caused division by zero";
+			return STATUS::DIVISION_BY_ZERO;
+		}
+
+		if (1.0f - beta2_t == 0.f) {
+			std::cerr << "v_hat calculation caused division by zero";
+			return STATUS::DIVISION_BY_ZERO;
+		}
+
+		float m_hat = m[i] / (1.0f - beta1_t);
+		float v_hat = v[i] / (1.0f - beta2_t);
+
+		params[i] = adam.lr * m_hat / (std::sqrt(v_hat) + adam.eps);
+	}
+
+	return STATUS::OK;
+}
+STATUS NeuralNetwork::adam_step() {
+	adam.t++;
+
+	for (DenseLayer &layer : layers) {
+		if (adam_update(
+			layer.weights,
+			layer.grad_weights,
+			layer.m_weights,
+			layer.v_weights
+			) != STATUS::OK) {
+			return STATUS::WEIGHT_UPDATE_FAILURE;
+		};
+		if (adam_update(
+				layer.bias,
+				layer.grad_bias,
+				layer.m_bias,
+				layer.v_bias
+				) != STATUS::OK) {
+			return STATUS::BIAS_UPDATE_FAILURE;
+		};
+	}
+	return STATUS::OK;
+}
+
+
+STATUS NeuralNetwork::fit(const std::vector<std::vector<float>>& X, const std::vector<std::vector<float>>& y, std::vector<std::vector<float>>& outputs) {
+
+	if (X.size() != y.size()) {
+		std::cerr << "Size mismatch: output and expected vectors do not match" << std::endl;
+		return STATUS::SIZE_MISMATCH;
+	}
+
+	for (auto& x : X) {
+		for (auto& value : x) {
+			if (std::abs(value) > 1) {
+				std::cerr << "Values must lie on the interval [-1, 1]. Received " << value << std::endl;
+				return STATUS::VALUE_OUT_OF_RANGE_ERROR;
+			}
+		}
+	}
+
+
+	for (int x = 0; x < X.size(); x++) {
+		if (train(X[x], y[x], outputs[x]) != STATUS::OK) {
+			std::cerr << "Training failed" << std::endl;
+			return STATUS::TRAINING_FAILURE;
+		}
+	}
 
 	return STATUS::OK;
 }
