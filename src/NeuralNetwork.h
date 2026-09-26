@@ -46,10 +46,17 @@ class NeuralNetwork {
 		static float tanh_derivative(float value) {return 1  - std::pow(std::tanh(value), 2);};
 		static float sig_derivative(float value) {const float s = sig_(value); return s * (1 - s); };
 		static float derivative(float value, const ACTIVATION_FUNCTION& activationFunction);
-		bool update_weights(DenseLayer& current, const std::vector<float>& X) const;
+		STATUS update_weights(DenseLayer& current, const std::vector<float>& X) const;
 		STATUS train(const std::vector<float>& X, const std::vector<float>& y, std::vector<float>& out);
 
 		STATUS adam_step();
+		STATUS adam_update(
+			Matrix<float>& params,
+			const Matrix<float>& grads,
+			Matrix<float>& m,
+			Matrix<float>& v
+		) const;
+
 		STATUS adam_update(
 			std::vector<float>& params,
 			const std::vector<float>& grads,
