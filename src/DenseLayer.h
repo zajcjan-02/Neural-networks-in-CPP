@@ -44,9 +44,6 @@ class DenseLayer {
 		std::vector<float> output;
 
 
-
-
-
 	private:
 
 		float activation(float value);
