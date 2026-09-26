@@ -1,4 +1,3 @@
-#include <cstdio>
 #include <vector>
 
 #include "src/NeuralNetwork.h"
@@ -10,8 +9,8 @@ int main() {
 		{0.5f, 0.1f, 0.7f}
 
 	};
-	int r = static_cast<int>(input.size());
-	int c = static_cast<int>(input[0].size());
+	const int r = static_cast<int>(input.size());
+	const int c = static_cast<int>(input[0].size());
 
 	std::vector<std::vector<float>> outputs(r, std::vector<float>(c, 0));
 
@@ -21,19 +20,23 @@ int main() {
 		{1.0f}
 	};
 
-	std::vector<float> weights_0 = {
+	std::vector<float> _weights_0 = {
 		0.3f, 0.7f, 0.2f,
 		0.1f, 0.6f, 0.8f
 	};
 
-	std::vector<float> weights_1 = {
+	std::vector<float> _weights_1 = {
 		0.2f, 0.1f,
 		0.3f, 0.7f
 	};
 
-	std::vector<float> weights_2 = {
+	std::vector<float> _weights_2 = {
 		0.5f, 0.4f
 	};
+
+	Matrix<float> weights_0{2,3,_weights_0};
+	Matrix<float> weights_1{2,2,_weights_1};
+	Matrix<float> weights_2{1,2,_weights_2};
 
 	NeuralNetwork ann;
 

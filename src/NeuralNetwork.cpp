@@ -98,8 +98,7 @@ float NeuralNetwork::derivative(float value, const ACTIVATION_FUNCTION& activati
 	}
 }
 
-// Legacy
-bool NeuralNetwork::update_weights(DenseLayer& current, const std::vector<float>& X) const {
+STATUS NeuralNetwork::update_weights(DenseLayer& current, const std::vector<float>& X) const {
 
 	const bool c = current.previous == nullptr;
 
@@ -110,17 +109,16 @@ bool NeuralNetwork::update_weights(DenseLayer& current, const std::vector<float>
 		for (int n= 0; n < pc; n++) {
 			float av = !c ? current.previous->activation_values[n] : X[n];
 			float delta = -learning_rate * current.grad_neurons[g] * av;
-			size_t widx = n + g * pc;
-			if (widx >= current.weights.size()) {
+			if (n + g * pc >= current.weights.size()) {
 				std::cerr << "Weight index out of bounds" << std::endl;
-				return false;
+				return STATUS::SIZE_MISMATCH;
 			}
-			current.weights[widx] += delta;
+			current.weights[g][n] += delta;
 		}
 	}
 
 
-	return true;
+	return STATUS::OK;
 }
 
 
@@ -156,8 +154,8 @@ STATUS NeuralNetwork::back_propagation(const std::vector<float>& X, const std::v
 		else { // hidden layers
 			size_t nc = layers[lidx + 1].activation_values.size(); // next layer neuron count
 			size_t cc = layers[lidx].activation_values.size();     // current layer neuron count
-
-			for (size_t neuron = 0; neuron < cc; neuron++) {
+			// @Legacy
+			/*for (size_t neuron = 0; neuron < cc; neuron++) {
 				float sum = 0.0f;
 
 				for (size_t next = 0; next < nc; next++) {
@@ -174,13 +172,31 @@ STATUS NeuralNetwork::back_propagation(const std::vector<float>& X, const std::v
 
 				float grad = sum * a_der;
 				layers[lidx].grad_neurons[neuron] = grad;
+			}*/
+
+			for (size_t neuron = 0; neuron < cc; neuron++) {
+				float sum = 0.0f;
+
+				for (size_t next = 0; next < nc; next++) {
+					size_t widx = next * cc + neuron;
+
+					sum += layers[lidx + 1].grad_neurons[next] * layers[lidx + 1].weights[next][neuron];
+				}
+
+				float a_der = derivative(
+					layers[lidx].activation_values[neuron],
+					layers[lidx].activationFunction
+				);
+
+				float grad = sum * a_der;
+				layers[lidx].grad_neurons[neuron] = grad;
 			}
 		}
 
 	}
 
 	for (int lidx = static_cast<int>(layers.size() -1); lidx >=0; lidx--) {
-		if (!update_weights(layers[lidx], X)) {
+		if (update_weights(layers[lidx], X)!= STATUS::OK) {
 			std::cerr << "Update weights failed" << std::endl;
 			return STATUS::WEIGHT_UPDATE_FAILURE;
 		}
@@ -220,10 +236,10 @@ STATUS NeuralNetwork::train(const std::vector<float>& X, const std::vector<float
 }
 
 STATUS NeuralNetwork::adam_update(
-	std::vector<float> &params,
-	const std::vector<float> &grads,
-	std::vector<float> &m,
-	std::vector<float> &v) const {
+	Matrix<float> &params,
+	const Matrix<float> &grads,
+	Matrix<float> &m,
+	Matrix<float> &v) const {
 
 	auto beta1_t = static_cast<float>(std::pow(adam.beta1, adam.t));
 	auto beta2_t = static_cast<float>(std::pow(adam.beta2, adam.t));
@@ -237,6 +253,49 @@ STATUS NeuralNetwork::adam_update(
 		return STATUS::SIZE_MISMATCH;
 	}
 
+	for (size_t i = 0; i<params.rows(); i++) {
+		for (size_t j = 0; j<params.cols(); j++) {
+			float g = grads[i][j];
+			m[i][j] = adam.beta1 * m[i][j] * (1.0f - adam.beta1) * g;
+			v[i][j] = adam.beta2 * v[i][j] * (1.0f - adam.beta2) * g * g;
+
+			if (1.0f - beta1_t == 0.f) {
+				std::cerr << "m_hat calculation caused division by zero";
+				return STATUS::DIVISION_BY_ZERO;
+			}
+
+			if (1.0f - beta2_t == 0.f) {
+				std::cerr << "v_hat calculation caused division by zero";
+				return STATUS::DIVISION_BY_ZERO;
+			}
+
+			float m_hat = m[i][j] / (1.0f - beta1_t);
+			float v_hat = v[i][j] / (1.0f - beta2_t);
+			params[i][j] = adam.lr * m_hat / (std::sqrt(v_hat) + adam.eps);
+		}
+	}
+
+	return STATUS::OK;
+}
+
+STATUS NeuralNetwork::adam_update(
+	std::vector<float>& params,
+	const std::vector<float>& grads,
+	std::vector<float>& m,
+	std::vector<float>& v
+	) const {
+
+	auto beta1_t = static_cast<float>(std::pow(adam.beta1, adam.t));
+	auto beta2_t = static_cast<float>(std::pow(adam.beta2, adam.t));
+
+	if (m.size() != params.size()) {
+		std::cerr << "Size mismatch: first moment vector m and params vector sizes do not match" << std::endl;
+		return STATUS::SIZE_MISMATCH;
+	}
+	if (v.size() != params.size()) {
+		std::cerr << "Size mismatch: second moment vector v and params vector sizes do not match" << std::endl;
+		return STATUS::SIZE_MISMATCH;
+	}
 	for (size_t i = 0; i < params.size(); i++) {
 		float g = grads[i];
 		m[i] = adam.beta1 * m[i] * (1.0f - adam.beta1) * g;
@@ -260,6 +319,8 @@ STATUS NeuralNetwork::adam_update(
 
 	return STATUS::OK;
 }
+
+
 STATUS NeuralNetwork::adam_step() {
 	adam.t++;
 
@@ -283,6 +344,7 @@ STATUS NeuralNetwork::adam_step() {
 	}
 	return STATUS::OK;
 }
+
 
 
 STATUS NeuralNetwork::fit(const std::vector<std::vector<float>>& X, const std::vector<std::vector<float>>& y, std::vector<std::vector<float>>& outputs) {
